@@ -15,7 +15,7 @@ MODEL_DIR = "models"
 # Google Drive URL for your fine-tuned ensemble model
 # IMPORTANT: This URL is for the 'ensemble_fine_tuned_model.h5'
 MODEL_URLS = {
-    "ensemble": "https://drive.google.com/uc?id=13jUW2aYyiNblInQnrK9UR8f0EcUalSTQ" # YOUR ENSEMBLE MODEL URL https://drive.google.com/file/d/13jUW2aYyiNblInQnrK9UR8f0EcUalSTQ/view?usp=sharing
+    "ensemble": "https://drive.google.com/uc?id=13jUW2aYyiNblInQnrK9UR8f0EcUalSTQ" # YOUR ENSEMBLE MODEL URL
 }
 
 # Local filename for the model
@@ -218,6 +218,21 @@ if 'treatment_advice_ensemble' not in st.session_state:
     st.session_state.treatment_advice_ensemble = None
 if 'uploaded_image_data_ensemble' not in st.session_state:
     st.session_state.uploaded_image_data_ensemble = None
+
+# Initialize uploaded_file to None to prevent NameError if st.file_uploader fails for some reason
+uploaded_file = None 
+
+# --- Image Upload Section ---
+st.markdown('<div class="card-base card-upload p-6 md:p-8 mb-6">', unsafe_allow_html=True)
+st.markdown('<h2 class="text-2xl font-semibold text-teal-700 mb-4">Unggah Gambar Daun</h2>', unsafe_allow_html=True)
+uploaded_file = st.file_uploader(
+    "Pilih Gambar Anda:",
+    type=["jpg", "jpeg", "png"],
+    help="Hanya file JPG, JPEG, atau PNG.",
+    key="file_uploader_ensemble" # Add unique key for Streamlit
+)
+st.markdown('<p class="mt-2 text-sm text-gray-500">Hanya file JPG, JPEG, atau PNG.</p>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True) # Close card-upload div
 
 if uploaded_file is not None:
     # Store uploaded image data in session state
