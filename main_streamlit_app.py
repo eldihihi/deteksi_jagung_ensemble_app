@@ -1,4 +1,4 @@
-# main_streamlit_app.py (Untuk Model Ensemble VGG16, ResNet50, InceptionV3 dengan Gemini API)
+# main_streamlit_app.py (Untuk Model Ensemble VGG16, ResNet50, InceptionV3 dengan Gemini API - Single Input)
 
 import streamlit as st
 import os
@@ -8,9 +8,6 @@ from tensorflow.keras.models import load_model # To load Keras/TensorFlow models
 from PIL import Image # Used for image manipulation (e.g., resizing)
 import requests # Used to make HTTP requests to Gemini API
 import json # Used to parse JSON responses from Gemini API
-from tensorflow.keras.applications.vgg16 import preprocess_input as preprocess_vgg # VGG16 preprocessing
-from tensorflow.keras.applications.resnet50 import preprocess_input as preprocess_resnet # ResNet50 preprocessing
-from tensorflow.keras.applications.inception_v3 import preprocess_input as preprocess_inception # InceptionV3 preprocessing
 
 # --- Model Configuration ---
 MODEL_DIR = "models"
@@ -18,17 +15,17 @@ MODEL_DIR = "models"
 # Google Drive URL for your fine-tuned ensemble model
 # IMPORTANT: This URL is for the 'ensemble_fine_tuned_model.h5'
 MODEL_URLS = {
-    "ensemble": "https://drive.google.com/uc?id=13jUW2aYyiNblInQnrK9UR8f0EcUalSTQ" # YOUR ENSEMBLE MODEL URL
+    "ensemble": "https://drive.google.com/uc?id=13jUW2aYyiNblInQnrK9UR8f0EcUalSTQ" # YOUR ENSEMBLE MODEL URL https://drive.google.com/file/d/13jUW2aYyiNblInQnrK9UR8f0EcUalSTQ/view?usp=sharing
 }
 
 # Local filename for the model
 MODEL_FILENAMES = {
-    "ensemble": "ensemble_fine_tuned_model.h5"
+    "ensemble": "ensemble_corn_disease_model.h5"
 }
 
-# Target image sizes for each model in the ensemble
-IMG_SIZE_VGG_RESNET = 224 # VGG16 and ResNet50 input size
-IMG_SIZE_INCEPTION = 299 # InceptionV3 input size
+# Input size for the single ensemble model
+# This should match the main input size defined in your Colab training code (224x224)
+IMG_SIZE_ENSEMBLE_INPUT = 224 # Ukuran input utama untuk model ensemble
 
 # Class names for prediction results (ensure the order matches your training)
 CLASS_NAMES = ['Blight', 'Common_Rust', 'Gray_Leaf_Spot', 'Healthy']
@@ -40,31 +37,22 @@ GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini
 # --- Helper Function for Image Preprocessing ---
 def preprocess_image_for_ensemble(image_path):
     """
-    Loads and preprocesses an image for each branch of the ensemble model.
-    Returns a tuple: (vgg_resnet_image_array, inception_image_array)
+    Loads and preprocesses an image for the single input ensemble model.
+    The preprocessing matches ImageDataGenerator's rescale=1./255.
     """
     img = Image.open(image_path).convert('RGB')
-
-    # Preprocess for VGG16/ResNet50 branch (224x224)
-    img_vgg_resnet = img.resize((IMG_SIZE_VGG_RESNET, IMG_SIZE_VGG_RESNET))
-    img_array_vgg_resnet = np.array(img_vgg_resnet)
-    img_array_vgg_resnet = np.expand_dims(img_array_vgg_resnet, axis=0) # Add batch dimension
     
-    # Apply VGG/ResNet specific preprocessing (rescaling to [-1, 1] or similar)
-    # Keras applications' preprocess_input functions handle normalization.
-    # If your training used rescale=1./255, ensure consistency here.
-    # For ensemble, it's safer to use the specific preprocess_input for each base model.
-    processed_vgg_resnet_image = preprocess_vgg(img_array_vgg_resnet) # VGG and ResNet preprocessing are similar
-
-    # Preprocess for InceptionV3 branch (299x299)
-    img_inception = img.resize((IMG_SIZE_INCEPTION, IMG_SIZE_INCEPTION))
-    img_array_inception = np.array(img_inception)
-    img_array_inception = np.expand_dims(img_array_inception, axis=0) # Add batch dimension
+    # Resize the image to the main ensemble input size
+    img_resized = img.resize((IMG_SIZE_ENSEMBLE_INPUT, IMG_SIZE_ENSEMBLE_INPUT))
+    img_array = np.array(img_resized)
     
-    # Apply InceptionV3 specific preprocessing
-    processed_inception_image = preprocess_inception(img_array_inception)
-
-    return processed_vgg_resnet_image, processed_inception_image
+    # Rescale pixel values to [0, 1]
+    img_array = img_array / 255.0
+    
+    # Expand dimensions to create a batch of 1 image
+    img_array = np.expand_dims(img_array, axis=0)
+    
+    return img_array
 
 # --- Model Loading with Streamlit Caching ---
 @st.cache_resource(show_spinner=False, hash_funcs={"_thread.RLock": lambda _: None})
@@ -86,7 +74,6 @@ def load_ensemble_model_cached():
     if not os.path.exists(model_filepath):
         status_placeholder.info(f"⬇️ Mengunduh model {name}...")
         try:
-            # Use fuzzy=True for gdown to be more robust with potential redirects
             gdown.download(url=MODEL_URLS[name], output=model_filepath, quiet=True, fuzzy=True)
             status_placeholder.success(f"✅ Model {name} berhasil diunduh.")
         except Exception as e:
@@ -97,11 +84,6 @@ def load_ensemble_model_cached():
     # Load model
     status_placeholder.info(f"🧠 Memuat model {name}...")
     try:
-        # For custom layers or functions (like 'swish' in EfficientNet), you might need
-        # custom_objects argument in load_model. For VGG/ResNet/Inception, usually not needed.
-        # If you encounter issues with custom activations (e.g., 'swish' in EfficientNet),
-        # ensure the necessary library (e.g., `efficientnet.tfkeras`) is imported BEFORE load_model.
-        # For this ensemble, we are using standard Keras applications, so it should be fine.
         model = load_model(model_filepath)
         loaded_model = model
         status_placeholder.success(f"✅ Model {name} berhasil dimuat.")
@@ -148,7 +130,7 @@ def get_treatment_suggestions(plant_disease):
         return "Gagal mendapatkan saran perawatan karena masalah koneksi atau API."
     except json.JSONDecodeError as e:
         st.error(f"Terjadi kesalahan saat mengurai respons JSON dari Gemini: {e}")
-        return "Gagal mendapatkan saran perawatan karena masalah format data."
+        return "Terjadi kesalahan saat mendapatkan saran perawatan."
     except Exception as e:
         st.error(f"Terjadi kesalahan tidak terduga: {e}")
         return "Terjadi kesalahan saat mendapatkan saran perawatan."
@@ -227,18 +209,6 @@ if ensemble_model is None:
     st.error("Aplikasi tidak dapat berfungsi penuh karena ada masalah dalam memuat model. Silakan periksa log deployment.")
     st.stop()
 
-# --- Image Upload Section ---
-st.markdown('<div class="card-base card-upload p-6 md:p-8 mb-6">', unsafe_allow_html=True)
-st.markdown('<h2 class="text-2xl font-semibold text-teal-700 mb-4">Unggah Gambar Daun</h2>', unsafe_allow_html=True)
-uploaded_file = st.file_uploader(
-    "Pilih Gambar Anda:",
-    type=["jpg", "jpeg", "png"],
-    help="Hanya file JPG, JPEG, atau PNG.",
-    key="file_uploader_ensemble" # Add unique key for Streamlit
-)
-st.markdown('<p class="mt-2 text-sm text-gray-500">Hanya file JPG, JPEG, atau PNG.</p>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True) # Close card-upload div
-
 # Initialize session state for results
 if 'predicted_result_ensemble' not in st.session_state:
     st.session_state.predicted_result_ensemble = None
@@ -272,11 +242,11 @@ if uploaded_file is not None:
     prediction_status_placeholder.info("Melakukan prediksi...")
 
     try:
-        # Preprocess image for ensemble model (returns two arrays)
-        processed_vgg_resnet_image, processed_inception_image = preprocess_image_for_ensemble(temp_image_path)
+        # Panggil preprocess_image_for_ensemble untuk mendapatkan SATU input
+        processed_image = preprocess_image_for_ensemble(temp_image_path)
         
-        # Predict with the ensemble model (requires a list of inputs)
-        prediction = ensemble_model.predict([processed_vgg_resnet_image, processed_vgg_resnet_image, processed_inception_image])
+        # Predict with the ensemble model (now expects a single input)
+        prediction = ensemble_model.predict(processed_image)
         
         # Get predicted class index and confidence level
         predicted_class_index = np.argmax(prediction)
@@ -293,7 +263,8 @@ if uploaded_file is not None:
         if st.session_state.predicted_result_ensemble == "Healthy":
             st.session_state.treatment_advice_ensemble = "Daun jagung terlihat sehat. Pertahankan praktik perawatan yang baik!"
         else:
-            st.session_state.treatment_advice_ensemble = get_treatment_suggestions(st.session_state.predicted_result_ensemble)
+            treatment_suggestions = get_treatment_suggestions(st.session_state.predicted_result_ensemble)
+            st.session_state.treatment_advice_ensemble = treatment_suggestions
         
     except Exception as e:
         prediction_status_placeholder.error("❌ Terjadi kesalahan saat memproses gambar atau melakukan prediksi.")
